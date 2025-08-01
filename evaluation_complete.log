@@ -1,0 +1,8 @@
+2025-07-30 22:20:31,897 - INFO - 🚀 Testing evaluation_complete module...
+2025-07-30 22:20:31,897 - INFO - Reproducibility setup dengan seed: 42
+2025-07-30 22:20:31,897 - INFO - ✅ Reproducibility test berhasil
+2025-07-30 22:20:31,898 - INFO - ✅ Module evaluation_complete siap digunakan
+2025-07-31 14:24:27,034 - INFO - 🚀 Testing evaluation_complete module...
+2025-07-31 14:24:27,034 - INFO - Reproducibility setup dengan seed: 42
+2025-07-31 14:24:27,034 - INFO - ✅ Reproducibility test berhasil
+2025-07-31 14:24:27,034 - INFO - ✅ Module evaluation_complete siap digunakan

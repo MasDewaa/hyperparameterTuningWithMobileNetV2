@@ -1,0 +1,11 @@
+{
+  "experiment_name": "baseline_model",
+  "start_datetime": "2025-07-31 11:36:21",
+  "end_datetime": "2025-07-31 11:39:42",
+  "total_time_seconds": 201.1175398826599,
+  "training_time_seconds": null,
+  "evaluation_time_seconds": 0.7511923313140869,
+  "total_time_minutes": 3.351958998044332,
+  "training_time_minutes": 0,
+  "evaluation_time_minutes": 0.012519872188568116
+}

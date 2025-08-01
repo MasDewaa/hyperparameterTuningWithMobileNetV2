@@ -1,0 +1,19 @@
+{
+  "method_name": "Genetic Algorithm",
+  "start_datetime": "2025-07-31 22:57:04",
+  "end_datetime": "2025-07-31 23:14:01",
+  "total_time_seconds": 1017.4199604988098,
+  "total_time_minutes": 16.95699934164683,
+  "best_fitness": 0.9333333373069763,
+  "best_hyperparameters": {
+    "learning_rate": 0.00022558413567262952,
+    "num_dense_units": 128,
+    "conv_filters": 64,
+    "add_conv_layer": false,
+    "optimizer": "adam"
+  },
+  "test_accuracy": 0.9833333492279053,
+  "test_loss": 0.11841445416212082,
+  "population_size": 3,
+  "generations": 5
+}
