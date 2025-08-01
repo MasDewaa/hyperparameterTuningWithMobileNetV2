@@ -1,0 +1,240 @@
+source:
+  url: https://github.com/fastapi/full-stack-fastapi-template
+  type: clone
+  shallow: true
+
+features:
+- python 3.12
+- node 20
+- postgresql
+
+nginx:
+  root: public_html/frontend/dist
+  passenger:
+    enabled: on
+    app_start_command: bash scripts/run.sh
+    app_root: public_html
+    env_var_list:
+    - PYTHONDONTWRITEBYTECODE=1
+
+commands:
+- command -v uv &> /dev/null || (curl -LsSf https://astral.sh/uv/install.sh | sh)
+- sed -ri "s/(# )?DOMAIN=.*/DOMAIN=${DOMAIN}/g" .env
+- sed -ri "s/(# )?FRONTEND_HOST=.*/FRONTEND_HOST=https:\/\/${DOMAIN}/g" .env
+- sed -ri "s/(# )?BACKEND_CORS_ORIGINS=.*/BACKEND_CORS_ORIGINS=https:\/\/${DOMAIN}/g" .env
+- sed -ri "s/(# )?ENVIRONMENT=.*/ENVIRONMENT=production/g" .env
+- sed -ri "s|(# )?SECRET_KEY=.*|SECRET_KEY=$(openssl rand -base64 33)|g" .env
+- sed -ri "s/(# )?FIRST_SUPERUSER=.*/FIRST_SUPERUSER=admin@$DOMAIN/g" .env
+- sed -ri "s/(# )?FIRST_SUPERUSER_PASSWORD=.*/FIRST_SUPERUSER_PASSWORD='$PASSWORD'/g" .env
+- sed -ri "s/(# )?POSTGRES_DB=.*/POSTGRES_DB=$DATABASE/g" .env
+- sed -ri "s/(# )?POSTGRES_USER=.*/POSTGRES_USER=$USERNAME/g" .env
+- sed -ri "s/(# )?POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD='$PGPASSWD'/g" .env
+- sed -ri "s/(# )?VITE_API_URL=.*/VITE_API_URL=https:\/\/${DOMAIN}/g" frontend/.env
+
+# Copy batik classifier files
+- mkdir -p backend/app/batik_classifier
+- cp src/api/fastapi/main.py backend/app/batik_classifier/
+- cp src/api/fastapi/final_tuned_genetic_algorithm_model.keras backend/app/batik_classifier/
+- cp src/api/fastapi/labels.txt backend/app/batik_classifier/
+- cp src/api/fastapi/requirements.txt backend/app/batik_classifier/
+
+# Update backend requirements
+- echo "tensorflow" >> backend/pyproject.toml
+- echo "pillow" >> backend/pyproject.toml
+- echo "numpy" >> backend/pyproject.toml
+
+# Create batik classifier API
+- filename: backend/app/batik_classifier/api.py
+  content: |
+    from fastapi import APIRouter, File, UploadFile, HTTPException
+    from fastapi.responses import JSONResponse
+    import tensorflow as tf
+    import numpy as np
+    from PIL import Image
+    import os
+    from pathlib import Path
+
+    router = APIRouter()
+
+    # Load model and labels
+    model_path = Path(__file__).parent / "final_tuned_genetic_algorithm_model.keras"
+    labels_path = Path(__file__).parent / "labels.txt"
+
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+
+    if not labels_path.exists():
+        raise FileNotFoundError(f"Labels file not found: {labels_path}")
+
+    # Load model
+    model = tf.keras.models.load_model(str(model_path))
+
+    # Load labels
+    with open(labels_path, 'r') as f:
+        labels = [line.strip() for line in f if line.strip()]
+
+    IMAGE_SIZE = (224, 224)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png'}
+
+    def validate_file(file: UploadFile):
+        """Validate uploaded file"""
+        if file.size and file.size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+        
+        ext = file.filename.split(".")[-1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Invalid file type. Allowed: jpg, jpeg, png")
+        
+        return True
+
+    @router.get("/health")
+    async def health_check():
+        """Health check endpoint"""
+        try:
+            # Test model prediction with dummy input
+            dummy_input = np.random.random((1, 224, 224, 3))
+            _ = model.predict(dummy_input, verbose=0)
+            return {
+                "status": "healthy",
+                "model_loaded": True,
+                "model_accuracy": "98.33%",
+                "classes": len(labels)
+            }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "model_loaded": False
+            }
+
+    @router.post("/predict")
+    async def predict_batik(file: UploadFile = File(...)):
+        """Predict batik pattern from uploaded image"""
+        try:
+            # Validate file
+            validate_file(file)
+            
+            # Process image
+            image = Image.open(file.file).convert("RGB")
+            image = image.resize(IMAGE_SIZE)
+            image_array = np.array(image) / 255.0
+            image_array = np.expand_dims(image_array, axis=0)
+
+            # Make prediction
+            predictions = model.predict(image_array, verbose=0)[0]
+            
+            # Format results
+            prediction_list = [
+                {"label": labels[i], "confidence": float(pred)}
+                for i, pred in enumerate(predictions)
+            ]
+            prediction_list.sort(key=lambda x: x["confidence"], reverse=True)
+            
+            top_predictions = prediction_list[:5]
+            top_prediction = top_predictions[0]
+
+            return {
+                "success": True,
+                "data": {
+                    "class_name": top_prediction["label"],
+                    "confidence": top_prediction["confidence"],
+                    "probabilities": {
+                        p["label"]: p["confidence"] for p in top_predictions
+                    },
+                    "model_info": {
+                        "accuracy": "98.33%",
+                        "method": "Genetic Algorithm",
+                        "classes": len(labels)
+                    }
+                }
+            }
+            
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "error": str(e),
+                    "message": "Prediction failed"
+                }
+            )
+
+    @router.get("/classes")
+    async def get_classes():
+        """Get list of available batik classes"""
+        return {
+            "success": True,
+            "data": {
+                "classes": labels,
+                "total_classes": len(labels),
+                "model_info": {
+                    "accuracy": "98.33%",
+                    "method": "Genetic Algorithm"
+                }
+            }
+        }
+
+# Update main app to include batik classifier
+- filename: backend/app/main.py
+  content: |
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from app.batik_classifier.api import router as batik_router
+
+    app = FastAPI(
+        title="Batik Classification API",
+        description="API for classifying Indonesian batik patterns using Transfer Learning",
+        version="1.0.0"
+    )
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Configure for production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Include batik classifier routes
+    app.include_router(batik_router, prefix="/api/batik", tags=["batik"])
+
+    @app.get("/")
+    async def root():
+        return {
+            "message": "Batik Classification API",
+            "version": "1.0.0",
+            "model_accuracy": "98.33%",
+            "endpoints": {
+                "health": "/api/batik/health",
+                "predict": "/api/batik/predict",
+                "classes": "/api/batik/classes"
+            }
+        }
+
+    @app.get("/health")
+    async def health():
+        return {"status": "healthy", "service": "batik-classifier"}
+
+# Update run script
+- filename: scripts/run.sh
+  content: |
+    #!/bin/bash
+    set -e ; set -a
+    source backend/.venv/bin/activate
+    source .env
+    cd backend
+    uvicorn app.main:app --host 0.0.0.0 --port $PORT --reload
+
+# Install dependencies and setup
+- cd backend ; uv sync
+- source .venv/bin/activate
+- pip install tensorflow pillow numpy
+- alembic upgrade head
+- python app/initial_data.py
+- deactivate; cd ../frontend
+- npm install
+- npm run build
+- cd ..
+- 'printf "Batik Classifier API deployed successfully!\n API URL: https://${DOMAIN}\n Health Check: https://${DOMAIN}/health\n Prediction: https://${DOMAIN}/api/batik/predict\n Admin Panel: https://${DOMAIN}/admin\n Email: admin@${DOMAIN}\n Password: ${PASSWORD}\n"' 
